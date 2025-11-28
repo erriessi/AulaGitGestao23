@@ -21,50 +21,41 @@ class ChatClient:
         self.create_chat_frame()
         
     def create_connection_frame(self):
-        # Frame de conexão
         self.connection_frame = tk.Frame(self.root, bg='#34495e', padx=20, pady=20)
         self.connection_frame.pack(fill='both', expand=True)
         
-        # Título
         title = tk.Label(self.connection_frame, text="🔌 Conectar ao Servidor", 
                         font=('Arial', 18, 'bold'), bg='#34495e', fg='white')
         title.pack(pady=(0, 20))
         
-        # IP do servidor
         tk.Label(self.connection_frame, text="IP do Servidor:", 
                 font=('Arial', 11), bg='#34495e', fg='white').pack(anchor='w', pady=(0, 5))
         self.ip_entry = tk.Entry(self.connection_frame, font=('Arial', 11), width=40)
         self.ip_entry.insert(0, "192.168.10.52")
         self.ip_entry.pack(pady=(0, 15))
         
-        # Porta
         tk.Label(self.connection_frame, text="Porta:", 
                 font=('Arial', 11), bg='#34495e', fg='white').pack(anchor='w', pady=(0, 5))
         self.port_entry = tk.Entry(self.connection_frame, font=('Arial', 11), width=40)
         self.port_entry.insert(0, "7777")
         self.port_entry.pack(pady=(0, 15))
         
-        # Nome de usuário
         tk.Label(self.connection_frame, text="Nome de Usuário:", 
                 font=('Arial', 11), bg='#34495e', fg='white').pack(anchor='w', pady=(0, 5))
         self.username_entry = tk.Entry(self.connection_frame, font=('Arial', 11), width=40)
         self.username_entry.pack(pady=(0, 20))
         
-        # Botão conectar
         self.connect_btn = tk.Button(self.connection_frame, text="Conectar", 
                                      font=('Arial', 12, 'bold'), bg='#27ae60', fg='white',
                                      cursor='hand2', padx=30, pady=10,
                                      command=self.connect_to_server)
         self.connect_btn.pack()
         
-        # Bind Enter key para conectar
         self.username_entry.bind('<Return>', lambda e: self.connect_to_server())
         
     def create_chat_frame(self):
-        # Frame de chat (inicialmente oculto)
         self.chat_frame = tk.Frame(self.root, bg='#2c3e50')
         
-        # Header
         header = tk.Frame(self.chat_frame, bg='#34495e', height=60)
         header.pack(fill='x')
         header.pack_propagate(False)
@@ -78,7 +69,6 @@ class ChatClient:
                                   cursor='hand2', command=self.disconnect)
         disconnect_btn.pack(side='right', padx=10)
         
-        # Área de mensagens
         msg_frame = tk.Frame(self.chat_frame, bg='#2c3e50')
         msg_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
@@ -88,12 +78,10 @@ class ChatClient:
                                                    state='disabled')
         self.chat_area.pack(fill='both', expand=True)
         
-        # Frame de entrada
         input_frame = tk.Frame(self.chat_frame, bg='#34495e', height=80)
         input_frame.pack(fill='x', padx=10, pady=(0, 10))
         input_frame.pack_propagate(False)
         
-        # Mensagem
         msg_input_frame = tk.Frame(input_frame, bg='#34495e')
         msg_input_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
@@ -129,7 +117,6 @@ class ChatClient:
             self.chat_frame.pack(fill='both', expand=True)
             self.user_label.config(text=f"👤 {username}")
             
-            # Inicia thread para receber mensagens
             thread = threading.Thread(target=self.receive_messages, daemon=True)
             thread.start()
             
@@ -140,13 +127,20 @@ class ChatClient:
                                f"Não foi possível se conectar ao servidor!\n\nDetalhes: {str(e)}")
             
     def receive_messages(self):
-        """Loop para receber mensagens do servidor"""
         while self.connected:
             try:
                 msg = self.client.recv(2048).decode('utf-8')
+                
                 if msg:
-                    # Exibe a mensagem recebida
-                    self.display_message("", msg, "received")
+
+                    # detecta mensagens privadas recebidas
+                    if msg.startswith("PRIVATE"):
+                        _, payload = msg.split(" ", 1)
+                        sender, message = payload.split("|", 1)
+                        self.display_message(f"{sender} (privado)", message, "received_private")
+                    else:
+                        self.display_message("", msg, "received")
+
             except:
                 if self.connected:
                     self.display_message("Sistema", 
@@ -156,27 +150,35 @@ class ChatClient:
                 break
                 
     def send_message(self):
-        """Envia mensagem para o servidor"""
         msg = self.msg_entry.get().strip()
-        
+
         if not msg:
             return
-            
+
         try:
-            # Envia a mensagem formatada com o nome de usuário ao servidor
-            full_msg = f'{self.username} {msg}'
-            self.client.send(full_msg.encode('utf-8'))
-            
-            # Exibe a mensagem enviada localmente
-            self.display_message(f"{self.username}", msg, "sent")
-            
+            # mensagem privada no formato: @nome mensagem
+            if msg.startswith("@") and " " in msg:
+                target, content = msg.split(" ", 1)
+                target = target[1:]  # remove o @
+
+                full_msg = f"PRIVATE {target}|{self.username} {content}"
+                self.client.send(full_msg.encode('utf-8'))
+
+                self.display_message(f"Para {target} (privado)", content, "sent_private")
+
+            else:
+                full_msg = f'{self.username} {msg}'
+                self.client.send(full_msg.encode('utf-8'))
+
+                self.display_message(self.username, msg, "sent")
+
             self.msg_entry.delete(0, tk.END)
+
         except:
             messagebox.showerror("Erro", "Não foi possível enviar a mensagem!")
             self.display_message("Sistema", "Erro ao enviar mensagem!", "error")
                 
     def display_message(self, sender, msg, msg_type):
-        """Exibe mensagem na área de chat"""
         self.chat_area.config(state='normal')
         
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -184,31 +186,47 @@ class ChatClient:
         if msg_type == "system":
             self.chat_area.insert(tk.END, f"[{timestamp}] ", 'timestamp')
             self.chat_area.insert(tk.END, f"⚙️ {msg}\n\n", 'system')
+
         elif msg_type == "error":
             self.chat_area.insert(tk.END, f"[{timestamp}] ", 'timestamp')
             self.chat_area.insert(tk.END, f"❌ {msg}\n\n", 'error')
+
         elif msg_type == "sent":
             self.chat_area.insert(tk.END, f"[{timestamp}] ", 'timestamp')
             self.chat_area.insert(tk.END, f"{sender}: ", 'sender_me')
             self.chat_area.insert(tk.END, f"{msg}\n\n", 'sent')
-        else:
-            # Mensagem recebida do servidor
+
+        elif msg_type == "sent_private":
+            self.chat_area.insert(tk.END, f"[{timestamp}] ", 'timestamp')
+            self.chat_area.insert(tk.END, f"{sender}: ", 'private_me')
+            self.chat_area.insert(tk.END, f"{msg}\n\n", 'private_msg')
+
+        elif msg_type == "received_private":
+            self.chat_area.insert(tk.END, f"[{timestamp}] ", 'timestamp')
+            self.chat_area.insert(tk.END, f"{sender}: ", 'private_from')
+            self.chat_area.insert(tk.END, f"{msg}\n\n", 'private_msg')
+
+        else:  # broadcast normal
             self.chat_area.insert(tk.END, f"[{timestamp}] ", 'timestamp')
             self.chat_area.insert(tk.END, f"{msg}\n\n", 'received')
             
-        # Configurar tags de cores
+        # Tags de estilo
         self.chat_area.tag_config('timestamp', foreground='#7f8c8d', font=('Arial', 8))
         self.chat_area.tag_config('system', foreground='#3498db', font=('Arial', 10, 'italic'))
         self.chat_area.tag_config('error', foreground='#e74c3c', font=('Arial', 10, 'bold'))
         self.chat_area.tag_config('sender_me', foreground='#27ae60', font=('Arial', 10, 'bold'))
         self.chat_area.tag_config('sent', foreground='#27ae60', font=('Arial', 10))
         self.chat_area.tag_config('received', foreground='#2c3e50', font=('Arial', 10))
-        
+
+        # privado
+        self.chat_area.tag_config('private_me', foreground='#8e44ad', font=('Arial', 10, 'bold'))
+        self.chat_area.tag_config('private_from', foreground='#9b59b6', font=('Arial', 10, 'bold'))
+        self.chat_area.tag_config('private_msg', foreground='#8e44ad', font=('Arial', 10))
+
         self.chat_area.config(state='disabled')
         self.chat_area.see(tk.END)
         
     def disconnect(self):
-        """Desconecta do servidor"""
         if self.connected:
             self.connected = False
             try:
