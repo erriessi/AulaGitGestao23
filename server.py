@@ -20,6 +20,7 @@ class ChatServer:
         
         self.create_widgets()
         
+        
     def create_widgets(self):
         # Header
         header = tk.Frame(self.root, bg='#34495e', height=80)
