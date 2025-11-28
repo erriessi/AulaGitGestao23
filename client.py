@@ -50,6 +50,7 @@ class ChatClient:
         self.username_entry = tk.Entry(self.connection_frame, font=('Arial', 11), width=40)
         self.username_entry.pack(pady=(0, 20))
         
+        
         # Botão conectar
         self.connect_btn = tk.Button(self.connection_frame, text="Conectar", 
                                      font=('Arial', 12, 'bold'), bg='#27ae60', fg='white',
