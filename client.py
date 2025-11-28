@@ -144,7 +144,7 @@ class ChatClient:
                 if self.connected:
                     self.display_message("Sistema", 
                                        "Não foi possível permanecer conectado no servidor!", 
-                                       "error")
+                                       "erro")
                     self.connected = False
                 break
                 
