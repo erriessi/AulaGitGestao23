@@ -148,7 +148,6 @@ class ChatServer:
         """Para o servidor"""
         self.running = False
         
-        # Fechar todas as conexões
         for client in self.clients[:]:
             try:
                 client.close()
@@ -180,9 +179,9 @@ class ChatServer:
                 client, addr = self.server.accept()
                 self.clients.append(client)
                 
-                self.log(f"Cliente conectado com sucesso. IP: {addr}", "success")
+                self.log(f"Cliente conectado. IP: {addr}", "success")
                 
-                # Inicia uma nova thread para lidar com as mensagens do cliente
+                # Thread para lidar com o cliente
                 thread = threading.Thread(target=self.handle_client, args=(client,), daemon=True)
                 thread.start()
                 
@@ -194,53 +193,71 @@ class ChatServer:
                 break
                 
     def handle_client(self, client):
-        """Função para lidar com as mensagens de um cliente"""
+        """Gerencia mensagens de um cliente"""
         username = None
         try:
-            # Recebe o nome de usuário
             usr = client.recv(2048).decode('utf-8')
             username = usr.strip('')
             self.username_connection[username] = client
-            
+
             self.log(f"Novo usuário: {username}", "info")
             self.update_users_list()
-            
+
             while self.running:
                 msg = client.recv(2048).decode('utf-8')
                 if not msg:
                     break
-                
+
                 self.log(f"Recebido: {msg}", "message")
-                
-                # Parse da mensagem: formato esperado "username/destino mensagem"
-                # Mas o cliente envia "username mensagem", então precisa adaptar
+
+                # -----------------------------------
+                #  DETECTA MENSAGEM PRIVADA
+                # -----------------------------------
+                if msg.startswith("PRIVATE "):
+                    try:
+                        _, payload = msg.split(" ", 1)
+                        target, content = payload.split("|", 1)
+                        sender, message_text = content.split(" ", 1)
+
+                        self.send_private_message(sender, target, message_text)
+
+                    except Exception as e:
+                        self.log(f"Erro ao processar mensagem privada: {e}", "error")
+                    continue
+
+                # Mensagem normal (broadcast)
                 parts = msg.split(' ', 1)
                 if len(parts) < 2:
                     continue
-                
-                src = parts[0]  # Nome do usuário que enviou
-                message_content = parts[1]  # Resto da mensagem
-                
-                # Aqui você pode adicionar lógica para destino se quiser
-                # Por enquanto, broadcast para todos
+
+                src = parts[0]
+                message_content = parts[1]
+
                 self.broadcast(f'{src}: {message_content}'.encode('utf-8'), client)
-                
+
         except:
             pass
         finally:
             self.remove_client(client, username)
             
-    def send_to_user(self, src, dst, msg, sender):
-        """Função para enviar mensagem para um usuário específico"""
-        if dst in self.username_connection.keys():
-            dst_conn = self.username_connection[dst]
-            try:
-                dst_conn.send(f'<{src}> {msg}'.encode('utf-8'))
-            except:
-                pass
+    def send_private_message(self, sender, target, message):
+        """Envia mensagem privada"""
+        if target not in self.username_connection:
+            self.log(f"Privado falhou: {target} não está online.", "warning")
+            return
+
+        try:
+            dst_conn = self.username_connection[target]
+            formatted = f"PRIVATE {sender}|{message}"
+            dst_conn.send(formatted.encode('utf-8'))
+
+            self.log(f"[PRIVADO] {sender} -> {target}: {message}", "info")
+
+        except:
+            self.log(f"Erro ao enviar privado para {target}", "error")
                 
     def broadcast(self, msg, sender):
-        """Função para transmitir mensagens para todos os clientes"""
+        """Transmite para todos menos o remetente"""
         for client in self.clients:
             if client != sender:
                 try:
@@ -248,17 +265,8 @@ class ChatServer:
                 except:
                     self.remove_client(client, None)
                     
-    def send_user_list(self, client):
-        """Função para enviar a lista de usuários"""
-        self.log("Enviando lista de usuários", "info")
-        users = '\n'.join(self.username_connection.keys())
-        try:
-            client.send(f'{users}'.encode('utf-8'))
-        except:
-            pass
-            
     def remove_client(self, client, username):
-        """Função para remover um cliente da lista"""
+        """Remove cliente desconectado"""
         if client in self.clients:
             self.clients.remove(client)
             

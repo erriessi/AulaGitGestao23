@@ -145,8 +145,14 @@ class ChatClient:
             try:
                 msg = self.client.recv(2048).decode('utf-8')
                 if msg:
-                    # Exibe a mensagem recebida
-                    self.display_message("", msg, "received")
+
+                    # detecta mensagens privadas recebidas
+                    if msg.startswith("PRIVATE "):
+                        _, payload = msg.split(" ", 1)
+                        sender, message = payload.split("|", 1)
+                        self.display_message(f"{sender} (privado)", message, "received_private")
+                    else:
+                        self.display_message("", msg, "received")
             except:
                 if self.connected:
                     self.display_message("Sistema", 
@@ -161,15 +167,24 @@ class ChatClient:
         
         if not msg:
             return
-            
+
         try:
-            # Envia a mensagem formatada com o nome de usuário ao servidor
-            full_msg = f'{self.username} {msg}'
-            self.client.send(full_msg.encode('utf-8'))
-            
-            # Exibe a mensagem enviada localmente
-            self.display_message(f"{self.username}", msg, "sent")
-            
+            # mensagem privada no formato: @nome mensagem
+            if msg.startswith("@") and " " in msg:
+                target, content = msg.split(" ", 1)
+                target = target[1:]  # remove o @
+
+                full_msg = f"PRIVATE {target}|{self.username} {content}"
+                self.client.send(full_msg.encode('utf-8'))
+
+                self.display_message(f"Para {target} (privado)", content, "sent_private")
+
+            else:
+                full_msg = f'{self.username} {msg}'
+                self.client.send(full_msg.encode('utf-8'))
+
+                self.display_message(self.username, msg, "sent")
+
             self.msg_entry.delete(0, tk.END)
         except:
             messagebox.showerror("Erro", "Não foi possível enviar a mensagem!")
@@ -191,8 +206,17 @@ class ChatClient:
             self.chat_area.insert(tk.END, f"[{timestamp}] ", 'timestamp')
             self.chat_area.insert(tk.END, f"{sender}: ", 'sender_me')
             self.chat_area.insert(tk.END, f"{msg}\n\n", 'sent')
-        else:
-            # Mensagem recebida do servidor
+        elif msg_type == "sent_private":
+            self.chat_area.insert(tk.END, f"[{timestamp}] ", 'timestamp')
+            self.chat_area.insert(tk.END, f"🔒 {sender}: ", 'sender_me_private')
+            self.chat_area.insert(tk.END, f"{msg}\n\n", 'sent_private')
+
+        elif msg_type == "received_private":
+            self.chat_area.insert(tk.END, f"[{timestamp}] ", 'timestamp')
+            self.chat_area.insert(tk.END, f"🔒 {sender}: ", 'sender_private')
+            self.chat_area.insert(tk.END, f"{msg}\n\n", 'received_private')
+
+        else:  # received normal
             self.chat_area.insert(tk.END, f"[{timestamp}] ", 'timestamp')
             self.chat_area.insert(tk.END, f"{msg}\n\n", 'received')
             
@@ -203,6 +227,12 @@ class ChatClient:
         self.chat_area.tag_config('sender_me', foreground='#27ae60', font=('Arial', 10, 'bold'))
         self.chat_area.tag_config('sent', foreground='#27ae60', font=('Arial', 10))
         self.chat_area.tag_config('received', foreground='#2c3e50', font=('Arial', 10))
+        
+         # 🟢 NOVAS TAGS PARA PRIVADO
+        self.chat_area.tag_config('sender_private', foreground='#8e44ad', font=('Arial', 10, 'bold'))
+        self.chat_area.tag_config('received_private', foreground='#8e44ad', font=('Arial', 10))
+        self.chat_area.tag_config('sender_me_private', foreground='#d35400', font=('Arial', 10, 'bold'))
+        self.chat_area.tag_config('sent_private', foreground='#d35400', font=('Arial', 10))
         
         self.chat_area.config(state='disabled')
         self.chat_area.see(tk.END)
