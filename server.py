@@ -97,16 +97,15 @@ class ChatServer:
         self.log_area.config(state='normal')
         timestamp = datetime.now().strftime("%H:%M:%S")
         
-        if msg_type == "info":
-            prefix = "ℹ️"
-        elif msg_type == "warning":
-            prefix = "⚠️"
-        elif msg_type == "error":
-            prefix = "❌"
-        elif msg_type == "success":
-            prefix = "✅"
-        else:
-            prefix = "📝"
+        icons = {
+            "info": "ℹ️",
+            "message": "💬",
+            "warning": "⚠️",
+            "error": "❌",
+            "success": "✅"
+        }
+        
+        prefix = icons.get(msg_type, "📝")
             
         self.log_area.insert(tk.END, f"[{timestamp}] {prefix} {message}\n")
         self.log_area.config(state='disabled')
@@ -134,7 +133,7 @@ class ChatServer:
             self.port_entry.config(state='disabled')
             self.status_label.config(text="🟢 Online", fg='#27ae60')
             
-            self.log(f"Iniciou o servidor de bate-papo na porta {port}", "success")
+            self.log(f"Servidor iniciado na porta {port}", "success")
             
             # Thread para aceitar conexões
             thread = threading.Thread(target=self.accept_connections, daemon=True)
@@ -196,44 +195,38 @@ class ChatServer:
         """Gerencia mensagens de um cliente"""
         username = None
         try:
+            # Recebe o username
             usr = client.recv(2048).decode('utf-8')
-            username = usr.strip('')
+            username = usr.strip()
             self.username_connection[username] = client
 
             self.log(f"Novo usuário: {username}", "info")
             self.update_users_list()
+
+            # Anuncia entrada do usuário para todos (exceto ele mesmo)
+            self.broadcast_system(f"{username} entrou na sala!", client)
 
             while self.running:
                 msg = client.recv(2048).decode('utf-8')
                 if not msg:
                     break
 
-                self.log(f"Recebido: {msg}", "message")
-
-                # -----------------------------------
-                #  DETECTA MENSAGEM PRIVADA
-                # -----------------------------------
+                # DETECTA MENSAGEM PRIVADA
                 if msg.startswith("PRIVATE "):
                     try:
                         _, payload = msg.split(" ", 1)
                         target, content = payload.split("|", 1)
-                        sender, message_text = content.split(" ", 1)
-
-                        self.send_private_message(sender, target, message_text)
+                        
+                        self.log(f"[PRIVADO] {username} -> {target}: {content}", "message")
+                        self.send_private_message(username, target, content)
 
                     except Exception as e:
                         self.log(f"Erro ao processar mensagem privada: {e}", "error")
                     continue
 
                 # Mensagem normal (broadcast)
-                parts = msg.split(' ', 1)
-                if len(parts) < 2:
-                    continue
-
-                src = parts[0]
-                message_content = parts[1]
-
-                self.broadcast(f'{src}: {message_content}'.encode('utf-8'), client)
+                self.log(f"{username}: {msg}", "message")
+                self.broadcast(f'{username}: {msg}'.encode('utf-8'), client)
 
         except:
             pass
@@ -257,13 +250,22 @@ class ChatServer:
             self.log(f"Erro ao enviar privado para {target}", "error")
                 
     def broadcast(self, msg, sender):
-        """Transmite para todos menos o remetente"""
+        """Transmite mensagem para todos menos o remetente"""
         for client in self.clients:
             if client != sender:
                 try:
                     client.send(msg)
                 except:
                     self.remove_client(client, None)
+    
+    def broadcast_system(self, msg, ignorar=None):
+        """Transmite mensagem do sistema para todos (exceto o ignorado)"""
+        for client in self.clients:
+            if client != ignorar:
+                try:
+                    client.send(msg.encode('utf-8'))
+                except:
+                    pass
                     
     def remove_client(self, client, username):
         """Remove cliente desconectado"""
@@ -274,6 +276,9 @@ class ChatServer:
             del self.username_connection[username]
             self.log(f"Usuário '{username}' desconectado", "warning")
             self.update_users_list()
+            
+            # Anuncia saída do usuário
+            self.broadcast_system(f"{username} saiu da sala!")
             
         try:
             client.close()
